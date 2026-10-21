@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>セトリ帳</title>
+<meta name="description" content="ライブのセトリを作って、メンバーへそのまま送れるアプリ">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#E7E9E4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111315" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="セトリ帳">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: 左に過去セトリの棚、右にステージに貼る紙。紙はバミリテープで留めた体裁 */
+:root{
+  --bg:#E7E9E4; --paper:#FBFBF8; --ink:#16181B; --muted:#5F6661; --line:#CDD1CB;
+  --accent:#2340A8; --tape:#F2C230; --tape-ink:#2A2200; --danger:#B3261E; --soft:#F0F2EE;
+  --f-display:"Dela Gothic One","Hiragino Sans","Yu Gothic",sans-serif;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic","Meiryo",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111315; --paper:#1B1E21; --ink:#ECEEEA; --muted:#9AA19C; --line:#33383C;
+  --accent:#8EA6FF; --tape:#E8B923; --tape-ink:#1E1800; --danger:#FF8A80; --soft:#23272A; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111315; --paper:#1B1E21; --ink:#ECEEEA; --muted:#9AA19C; --line:#33383C;
+  --accent:#8EA6FF; --tape:#E8B923; --tape-ink:#1E1800; --danger:#FF8A80; --soft:#23272A; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:270px minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:860px){.wrap{grid-template-columns:minmax(0,1fr)}}
+
+header.app{max-width:1180px;margin:0 auto 18px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+header.app h1{font-family:var(--f-display);font-weight:400;font-size:28px;margin:0;letter-spacing:.02em}
+header.app p{margin:0;color:var(--muted);font-size:13px}
+.status{margin-left:auto;font-size:12px;color:var(--muted);font-family:var(--f-mono)}
+
+/* 棚 */
+aside{display:flex;flex-direction:column;gap:12px;min-width:0}
+.btn{border:1px solid var(--line);background:var(--paper);border-radius:6px;padding:8px 12px;cursor:pointer;font-weight:500;font-size:14px}
+.btn:hover{border-color:var(--ink)}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.tape{background:var(--tape);color:var(--tape-ink);border-color:var(--tape)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.shelf-head{display:flex;justify-content:space-between;align-items:center;font-size:12px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+.shelf{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:70vh;overflow:auto}
+.shelf li button{width:100%;text-align:left;background:transparent;border:1px solid transparent;border-radius:6px;padding:9px 10px;cursor:pointer;display:grid;gap:2px}
+.shelf li button:hover{background:var(--soft)}
+.shelf li button[aria-current="true"]{background:var(--paper);border-color:var(--ink)}
+.shelf .d{font-family:var(--f-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.shelf .t{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shelf .m{font-size:12px;color:var(--muted)}
+@media (max-width:860px){.shelf{flex-direction:row;overflow-x:auto;max-height:none;padding-bottom:4px}.shelf li{flex:0 0 200px}}
+
+/* 紙 */
+main{min-width:0;display:flex;flex-direction:column;gap:16px}
+.sheet{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:28px clamp(16px,3vw,32px) 24px;box-shadow:0 1px 0 var(--line),0 12px 28px -18px rgba(0,0,0,.35)}
+.sheet::before,.sheet::after{content:"";position:absolute;top:-10px;width:86px;height:22px;background:var(--tape);opacity:.9;transform:rotate(-4deg)}
+.sheet::before{left:22px}.sheet::after{right:22px;transform:rotate(3deg)}
+.meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 14px}
+.meta .wide{grid-column:span 2}
+@media (max-width:640px){.meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
+label.f{display:flex;flex-direction:column;gap:3px;min-width:0}
+label.f span{font-size:11px;letter-spacing:.1em;color:var(--muted)}
+input.in,select.in,textarea.in{width:100%;min-width:0;border:1px solid var(--line);background:transparent;border-radius:5px;padding:7px 9px}
+.in::placeholder{color:var(--muted);opacity:.55}
+input.in:focus,select.in:focus,textarea.in:focus{border-color:var(--accent);outline:none}
+input.title-in{font-family:var(--f-display);font-size:24px;border:none;border-bottom:2px solid var(--ink);border-radius:0;padding:4px 0}
+
+.songs-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:22px;padding-bottom:8px;border-bottom:2px solid var(--ink)}
+.songs-head h2{font-family:var(--f-display);font-weight:400;font-size:18px;margin:0}
+.tally{font-family:var(--f-mono);font-size:12px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.tally b{color:var(--ink)}
+
+ol.songs{list-style:none;margin:0;padding:0}
+.row{display:grid;grid-template-columns:22px 44px 92px minmax(0,1.6fr) minmax(0,1fr) 64px auto;gap:8px;align-items:center;padding:8px 4px;border-bottom:1px dashed var(--line);border-top:2px solid transparent}
+.row.selected{background:color-mix(in srgb,var(--accent) 9%,transparent)}
+.row.drop-before{border-top-color:var(--accent)}
+.row.dragging{opacity:.4}
+.row .chk{width:18px;height:18px;accent-color:var(--accent);cursor:pointer;margin:0}
+.row .no{font-family:var(--f-mono);font-weight:700;font-size:20px;text-align:right;font-variant-numeric:tabular-nums;cursor:grab;user-select:none;display:flex;align-items:center;justify-content:flex-end;gap:4px}
+.row .no .grip{font-size:12px;color:var(--line);letter-spacing:-2px}
+.row:hover .no .grip{color:var(--muted)}
+.row.interlude{background:var(--soft)}
+.row.interlude .no{font-size:11px;color:var(--muted);font-family:var(--f-body);letter-spacing:.08em}
+.row .title{font-weight:700;font-size:16px}
+.row .memo{grid-column:4 / 7}
+.row .tools{display:flex;gap:1px}
+.row .tools button{width:28px;height:30px;border:1px solid transparent;background:transparent;border-radius:5px;cursor:pointer;color:var(--muted);font-size:14px}
+.row .tools button:hover{border-color:var(--line);color:var(--ink)}
+.row .tools button.x:hover{color:var(--danger)}
+.badge-cover{display:inline-block}
+.seg{display:flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.seg button{flex:1;border:none;background:transparent;padding:6px 10px;white-space:nowrap;font-size:12px;cursor:pointer;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper);font-weight:700}
+.seg button.cv[aria-pressed="true"]{background:var(--tape);color:var(--tape-ink)}
+.artist[hidden]{display:none}
+@media (max-width:700px){
+  .row{grid-template-columns:22px 40px minmax(0,1fr) 60px;grid-template-areas:"chk no title time" ". . kind kind" ". . artist artist" ". . memo memo" ". . tools tools"}
+  .row .chk{grid-area:chk}.row .no{grid-area:no}.row .title{grid-area:title}.row .time{grid-area:time}.row .kind{grid-area:kind}
+  .row .artist{grid-area:artist}.row .memo{grid-area:memo;grid-column:3 / 5}.row .tools{grid-area:tools;justify-content:flex-end}
+  .row.interlude .kind{grid-area:kind}
+}
+.add-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.add-bar .sep{width:1px;height:24px;background:var(--line);margin:0 4px}
+.add-bar input.n{width:64px;text-align:center;font-family:var(--f-mono)}
+.row-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 4px;font-size:13px;border-bottom:1px solid var(--line)}
+.row-bar label{display:flex;gap:6px;align-items:center;cursor:pointer;color:var(--muted)}
+.row-bar .btn{padding:5px 10px;font-size:13px}
+.row-bar .sp{flex:1}
+.row-bar .sel-count{font-weight:700;color:var(--accent)}
+details.bulk{margin-top:10px;border:1px solid var(--line);border-radius:6px;padding:8px 12px}
+details.bulk summary{cursor:pointer;font-weight:500;font-size:14px}
+details.bulk p{margin:6px 0;font-size:12px;color:var(--muted)}
+details.bulk textarea{font-size:14px}
+.undo{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.notes{margin-top:18px}
+
+/* 出力 */
+.out{background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:18px clamp(16px,3vw,24px);display:flex;flex-direction:column;gap:10px}
+.out-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.out-head h2{margin:0;font-size:15px;font-weight:700}
+.opts{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.opts label{display:flex;gap:5px;align-items:center;cursor:pointer}
+pre.preview{margin:0;white-space:pre-wrap;word-break:break-word;font-family:var(--f-body);font-size:14px;line-height:1.75;background:var(--soft);border-radius:4px;padding:14px;max-height:420px;overflow:auto}
+textarea.fallback{width:100%;min-height:160px}
+.toast{font-size:13px;color:var(--accent);font-weight:700}
+
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.actions .sp{flex:1}
+.banner{background:var(--soft);border-left:4px solid var(--tape);padding:10px 14px;font-size:13px;border-radius:0 4px 4px 0}
+.empty{background:var(--paper);border:1px dashed var(--line);border-radius:4px;padding:40px 24px;text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center}
+.empty h2{font-family:var(--f-display);font-weight:400;margin:0;font-size:22px}
+.empty p{margin:0;color:var(--muted);max-width:40ch}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* アプリとして単体で動かすための土台 */
+:root{color-scheme:light}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+body{margin:0;padding-top:calc(20px + env(safe-area-inset-top,0px));padding-bottom:calc(48px + env(safe-area-inset-bottom,0px))}
+@media (max-width:700px){ input.in,select.in,textarea.in{font-size:16px} } /* iPhoneで入力時に拡大されないように */
+.backup{display:flex;flex-direction:column;gap:6px;margin-top:8px;padding-top:12px;border-top:1px solid var(--line)}
+.backup p{margin:0;font-size:12px;color:var(--muted)}
+.backup .btns{display:flex;gap:6px;flex-wrap:wrap}
+.backup .btn{font-size:13px;padding:6px 10px}
+@media (display-mode: standalone){ header.app p{display:none} }
+</style>
+</head>
+<body>
+
+<header class="app">
+  <h1>セトリ帳</h1>
+  <p>ライブごとにセトリを作って、メンバーへそのまま送れます</p>
+  <span class="status" id="status">読み込み中…</span>
+</header>
+
+<div class="wrap">
+  <aside>
+    <button class="btn primary" id="newBlank" type="button">＋ 新しいセトリ</button>
+    <div class="shelf-head"><span>過去のセトリ</span><span id="count"></span></div>
+    <ul class="shelf" id="shelf"></ul>
+    <div class="backup">
+      <div class="shelf-head"><span>バックアップ</span></div>
+      <p>セトリはこの端末の中に保存されます。機種変更や別の端末で使うときは、書き出したファイルを読み込んでください。</p>
+      <div class="btns">
+        <button class="btn" type="button" id="exportBtn">書き出す</button>
+        <button class="btn" type="button" id="importBtn">読み込む</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+    </div>
+  </aside>
+
+  <main id="main"></main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const KINDS = {song:"曲", mc:"MC", se:"SE", other:"転換・他"};
+  const LS_KEY = "setlist-book-v1";
+  const state = { lists:{}, currentId:null, draft:null, dirty:false, mode:"loading", readOnly:false,
+    out:{memo:true, time:false, artist:true, numberMc:false}, confirmDelete:false, toast:"",
+    sel:new Set(), undo:null, confirmClear:false, bulkN:5 };
+  let db = null, saveTimer = null, saving = Promise.resolve();
+
+  const $ = (s,el=document)=>el.querySelector(s);
+  const uid = ()=>"s"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  const clone = o=>JSON.parse(JSON.stringify(o));
+  const esc = s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const today = ()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+  const newRow = (kind="song")=>({id:uid(), kind, title:"", type:"original", artist:"", time:"", memo:""});
+  const blank = ()=>({id:uid(), title:"", date:today(), venue:"", open:"", start:"", slot:"", members:"", notes:"",
+    rows:[newRow(),newRow(),newRow()], createdAt:Date.now(), updatedAt:Date.now()});
+
+  function parseTime(t){ if(!t) return 0; const m=String(t).trim().match(/^(\d+)(?:[:：'](\d{1,2}))?$/); if(!m) return 0; return (+m[1])*60+(+(m[2]||0)); }
+  function fmtTime(s){ const m=Math.floor(s/60), r=s%60; return m+":"+String(r).padStart(2,"0"); }
+  function fmtDate(d){ if(!d) return "日付未定"; const [y,m,dd]=d.split("-"); const w="日月火水木金土"[new Date(+y,+m-1,+dd).getDay()]; return `${y}/${m}/${dd}(${w})`; }
+
+  /* ---------- 保存先 ---------- */
+  function setStatus(t){ $("#status").textContent=t; }
+  function loadLocal(){ try{ const raw=localStorage.getItem(LS_KEY); return raw?JSON.parse(raw):{}; }catch(e){ return {}; } }
+  function saveLocal(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state.lists)); return true; }catch(e){ return false; } }
+
+  function persist(sl){
+    state.lists[sl.id]=clone(sl);
+    if(state.mode==="db"){
+      saving = saving.then(()=>db.collection("setlists").doc(sl.id).set(clone(sl)))
+        .then(()=>{ setStatus("保存しました"); })
+        .catch(e=>{
+          if(e && (e.code==="invalid_argument")){ state.readOnly=true; setStatus("閲覧のみ"); render(); }
+          else if(e && e.code==="quota_exceeded"){ setStatus("保存容量がいっぱいです。古いセトリを削除してください"); }
+          else setStatus("保存に失敗しました。もう一度編集すると再保存します");
+        });
+    } else {
+      setStatus(saveLocal() ? "保存しました" : "保存できません（ページを閉じると消えます）");
+    }
+  }
+  function removeList(id){
+    delete state.lists[id];
+    if(state.mode==="db"){ saving = saving.then(()=>db.collection("setlists").doc(id).delete()).catch(()=>setStatus("削除に失敗しました")); }
+    else saveLocal();
+  }
+  function scheduleSave(){
+    state.dirty=true; setStatus("編集中…");
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(()=>{ state.draft.updatedAt=Date.now(); persist(state.draft); state.dirty=false; renderShelf(); },700);
+  }
+  function flushSave(){ if(state.dirty){ clearTimeout(saveTimer); state.draft.updatedAt=Date.now(); persist(state.draft); state.dirty=false; } }
+
+  /* ---------- 操作 ---------- */
+  function sorted(){ return Object.values(state.lists).sort((a,b)=>(b.date||"").localeCompare(a.date||"") || b.updatedAt-a.updatedAt); }
+  function open(id){ flushSave(); state.currentId=id; state.draft=id?clone(state.lists[id]):null; state.confirmDelete=false; state.toast="";
+    state.sel.clear(); state.undo=null; state.confirmClear=false; render(); }
+
+  /* 行の削除はすべてここを通し、直前の状態を「元に戻す」用に残す */
+  function removeRows(pred, msg){
+    const sl=state.draft, before=clone(sl.rows);
+    const kept=sl.rows.filter(r=>!pred(r)), n=sl.rows.length-kept.length;
+    if(!n) return 0;
+    sl.rows=kept; state.undo={rows:before, msg:msg.replace("{n}",n)};
+    state.sel.clear(); state.confirmClear=false; scheduleSave(); render(); return n;
+  }
+  const isEmptySong = r=>r.kind==="song" && !r.title.trim() && !r.artist.trim() && !r.time.trim() && !r.memo.trim();
+  const isBlankSheet = sl=>sl.rows.every(r=>!r.title.trim() && !r.artist.trim() && !r.time.trim() && !r.memo.trim());
+
+  /* 一括入力: 1行1曲。「MC: 内容」「SE: 内容」、「曲名 / 原曲アーティスト」でカバー */
+  function parseBulk(text){
+    return text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(line=>{
+      line=line.replace(/^\d+\s*[.．、)）]\s*/,"");
+      let m=line.match(/^(MC|ＭＣ)\s*[:：]?\s*(.*)$/i); if(m){ const r=newRow("mc"); r.title=m[2]; return r; }
+      m=line.match(/^(SE|ＳＥ)\s*[:：]?\s*(.*)$/i); if(m){ const r=newRow("se"); r.title=m[2]; return r; }
+      m=line.match(/^(転換)\s*[:：]?\s*(.*)$/); if(m){ const r=newRow("other"); r.title=m[2]; return r; }
+      const r=newRow("song"); const parts=line.split(/\s*[\/／]\s*/);
+      r.title=parts[0]; if(parts.length>1 && parts[1]){ r.type="cover"; r.artist=parts.slice(1).join(" / "); }
+      return r;
+    });
+  }
+  function focusRow(id, f="title"){ const el=document.querySelector(`[data-row="${id}"] [data-f="${f}"]`); if(el) el.focus(); }
+  function createBlank(){ flushSave(); const sl=blank(); persist(sl); open(sl.id); const t=$("#f-title"); if(t) t.focus(); }
+  function duplicate(){
+    flushSave();
+    const src=state.draft; const sl=clone(src);
+    sl.id=uid(); sl.date=today(); sl.title=src.title?src.title+"（コピー）":""; sl.createdAt=sl.updatedAt=Date.now();
+    sl.rows=sl.rows.map(r=>({...r,id:uid()}));
+    persist(sl); open(sl.id); state.toast="コピーして新しいセトリを作りました。日付と会場を書き換えてください"; render();
+  }
+
+  /* ---------- テキスト出力 ---------- */
+  function buildText(sl){
+    const o=state.out, L=[];
+    L.push("【セトリ】"+(sl.title||"タイトル未定"));
+    L.push(fmtDate(sl.date)+(sl.venue?"　"+sl.venue:""));
+    const tt=[sl.open&&"OPEN "+sl.open, sl.start&&"START "+sl.start, sl.slot&&"出番 "+sl.slot].filter(Boolean);
+    if(tt.length) L.push(tt.join(" / "));
+    if(sl.members) L.push("メンバー: "+sl.members);
+    L.push("");
+    let n=0, total=0;
+    sl.rows.forEach(r=>{
+      const sec=parseTime(r.time); total+=sec;
+      const tm = o.time && r.time ? `［${r.time}］` : "";
+      const memo = o.memo && r.memo ? `　※${r.memo}` : "";
+      if(r.kind==="song"){
+        n++;
+        let line=`${String(n).padStart(2," ")}. ${r.title||"（曲名未定）"}`;
+        if(r.type==="cover") line+= o.artist && r.artist ? `（カバー／${r.artist}）` : "（カバー）";
+        L.push(line+tm+memo);
+      } else {
+        L.push(`── ${KINDS[r.kind]}${r.title?"："+r.title:""} ──`+tm+memo);
+      }
+    });
+    L.push("");
+    const covers=sl.rows.filter(r=>r.kind==="song"&&r.type==="cover").length;
+    let sum=`全${n}曲`+(covers?`（うちカバー${covers}曲）`:"");
+    if(o.time && total) sum+=`　合計 約${fmtTime(total)}`;
+    L.push(sum);
+    if(sl.notes) { L.push(""); L.push("■ 連絡事項"); L.push(sl.notes); }
+    return L.join("\n");
+  }
+
+  /* ---------- 描画 ---------- */
+  function renderShelf(){
+    const list=sorted(); $("#count").textContent=list.length? list.length+"件":"";
+    $("#shelf").innerHTML = list.length ? list.map(sl=>{
+      const songs=sl.rows.filter(r=>r.kind==="song").length;
+      return `<li><button type="button" data-open="${esc(sl.id)}" aria-current="${sl.id===state.currentId}">
+        <span class="d">${esc(fmtDate(sl.date))}</span>
+        <span class="t">${esc(sl.title||"無題のセトリ")}</span>
+        <span class="m">${esc(sl.venue||"会場未定")}・${songs}曲</span></button></li>`;
+    }).join("") : `<li class="m" style="color:var(--muted);font-size:13px;padding:6px 2px">まだありません</li>`;
+    $("#newBlank").disabled = state.readOnly || state.mode==="loading";
+  }
+
+  function rowHTML(r, no){
+    const ro=state.readOnly?"disabled":"";
+    const inter=r.kind!=="song";
+    const sel=state.sel.has(r.id);
+    return `<li class="row ${inter?"interlude":""} ${sel?"selected":""}" data-row="${esc(r.id)}">
+      <input type="checkbox" class="chk" data-sel aria-label="この行を選択" ${sel?"checked":""} ${ro}>
+      <span class="no" ${ro?"":`data-grip title="ドラッグで並べ替え"`}>${ro?"":`<span class="grip" aria-hidden="true">⋮⋮</span>`}<span class="nv">${inter?esc(KINDS[r.kind]):no}</span></span>
+      <select class="in kind" data-f="kind" aria-label="種類" ${ro}>
+        ${Object.entries(KINDS).map(([k,v])=>`<option value="${k}" ${r.kind===k?"selected":""}>${v}</option>`).join("")}
+      </select>
+      <input class="in title" data-f="title" value="${esc(r.title)}" placeholder="${inter?"内容（任意）":"曲名"}" aria-label="曲名" ${ro}>
+      ${inter?`<span class="artist"></span>`:`<div class="artist" style="display:flex;gap:6px;min-width:0">
+        <div class="seg" role="group" aria-label="オリジナルかカバーか" style="flex:0 0 auto">
+          <button type="button" data-type="original" aria-pressed="${r.type!=="cover"}" ${ro}>オリジナル</button>
+          <button type="button" class="cv" data-type="cover" aria-pressed="${r.type==="cover"}" ${ro}>カバー</button>
+        </div>
+        <input class="in" data-f="artist" value="${esc(r.artist)}" placeholder="原曲アーティスト" aria-label="原曲アーティスト" ${r.type==="cover"?"":"hidden"} ${ro}>
+      </div>`}
+      <input class="in time" data-f="time" value="${esc(r.time)}" placeholder="4:30" inputmode="numeric" aria-label="尺" ${ro}>
+      <div class="tools">
+        <button type="button" data-mv="-1" aria-label="上へ" title="上へ" ${ro}>↑</button>
+        <button type="button" data-mv="1" aria-label="下へ" title="下へ" ${ro}>↓</button>
+        <button type="button" data-ins aria-label="この下に曲を挿入" title="この下に曲を挿入" ${ro}>＋</button>
+        <button type="button" data-dup aria-label="この行を複製" title="複製" ${ro}>⧉</button>
+        <button type="button" class="x" data-del aria-label="この行を削除" title="削除" ${ro}>✕</button>
+      </div>
+      <input class="in memo" data-f="memo" value="${esc(r.memo)}" placeholder="メモ（キー、つなぎ、機材替えなど）" aria-label="メモ" ${ro}>
+    </li>`;
+  }
+
+  function render(){
+    renderShelf();
+    const main=$("#main"), sl=state.draft;
+    if(state.mode==="loading"){ main.innerHTML=`<div class="empty"><p>保存したセトリを読み込んでいます…</p></div>`; return; }
+    if(!sl){
+      const has=Object.keys(state.lists).length;
+      main.innerHTML=`<div class="empty"><h2>${has?"左からセトリを選んでください":"最初のセトリを作りましょう"}</h2>
+        <p>曲名・オリジナル／カバー・MCやSEの位置を書いて、できたら「コピー」でLINEやDiscordに貼れます。作ったセトリは日付順に残ります。</p>
+        ${state.readOnly?"":`<button class="btn primary" type="button" data-act="new">＋ 新しいセトリを作る</button>`}</div>`;
+      return;
+    }
+    const ro=state.readOnly?"disabled":"";
+    let n=0; const songs=sl.rows.filter(r=>r.kind==="song"), covers=songs.filter(r=>r.type==="cover").length;
+    const total=sl.rows.reduce((a,r)=>a+parseTime(r.time),0);
+    main.innerHTML=`
+      ${state.readOnly?`<div class="banner">このセトリは閲覧のみです。編集はオーナーか編集権限のある人ができます。</div>`:""}
+      ${state.toast?`<div class="banner">${esc(state.toast)}</div>`:""}
+      <section class="sheet" aria-label="セトリ表">
+        <label class="f" style="margin-bottom:14px"><span>ライブ名・イベント名</span>
+          <input class="in title-in" id="f-title" data-m="title" value="${esc(sl.title)}" placeholder="例：秋の対バン企画 vol.3" ${ro}></label>
+        <div class="meta">
+          <label class="f"><span>日付</span><input class="in" type="date" id="f-date" data-m="date" value="${esc(sl.date)}" ${ro}></label>
+          <label class="f wide"><span>会場</span><input class="in" id="f-venue" data-m="venue" value="${esc(sl.venue)}" placeholder="例：宇都宮 HEAVEN'S ROCK" ${ro}></label>
+          <label class="f"><span>出番</span><input class="in" id="f-slot" data-m="slot" value="${esc(sl.slot)}" placeholder="例：19:20〜（3番手）" ${ro}></label>
+          <label class="f"><span>OPEN</span><input class="in" id="f-open" data-m="open" value="${esc(sl.open)}" placeholder="18:00" ${ro}></label>
+          <label class="f"><span>START</span><input class="in" id="f-start" data-m="start" value="${esc(sl.start)}" placeholder="18:30" ${ro}></label>
+          <label class="f wide"><span>メンバー</span><input class="in" id="f-members" data-m="members" value="${esc(sl.members)}" placeholder="例：Vo.〇〇 Gt.〇〇 Ba.〇〇 Dr.〇〇" ${ro}></label>
+        </div>
+        <div class="songs-head"><h2>SETLIST</h2>
+          <div class="tally"><span>曲 <b>${songs.length}</b></span><span>カバー <b>${covers}</b></span><span>合計 <b>${total?fmtTime(total):"—"}</b></span></div></div>
+        ${state.undo?`<div class="banner undo" role="status"><span>${esc(state.undo.msg)}</span><button class="btn" type="button" data-act="undo">元に戻す</button><button class="btn ghost" type="button" data-act="undoClose">閉じる</button></div>`:""}
+        ${state.readOnly||!sl.rows.length?"":`<div class="row-bar">
+          <label><input type="checkbox" id="selAll" ${state.sel.size&&state.sel.size===sl.rows.length?"checked":""}>すべて選択</label>
+          ${state.sel.size?`<span class="sel-count">${state.sel.size}行を選択中</span>
+            <button class="btn danger" type="button" data-act="delSel">選択した行を削除</button>
+            <button class="btn" type="button" data-act="dupSel">選択した行を複製</button>
+            <button class="btn ghost" type="button" data-act="selNone">選択を解除</button>`:""}
+          <span class="sp"></span>
+          ${sl.rows.some(isEmptySong)?`<button class="btn" type="button" data-act="delEmpty">空の曲行を削除</button>`:""}
+          ${state.confirmClear
+            ?`<span>全${sl.rows.length}行を消しますか？</span><button class="btn danger" type="button" data-act="clearYes">すべて消す</button><button class="btn ghost" type="button" data-act="clearNo">やめる</button>`
+            :`<button class="btn ghost" type="button" data-act="clear" style="color:var(--danger)">すべての行を消す</button>`}
+        </div>`}
+        <ol class="songs" id="rows">${sl.rows.map(r=>rowHTML(r, r.kind==="song"?++n:0)).join("")}</ol>
+        ${!sl.rows.length?`<p style="color:var(--muted);font-size:14px;padding:14px 4px;margin:0">行がありません。下のボタンから曲やMCを追加してください。</p>`:""}
+        ${state.readOnly?"":`<div class="add-bar">
+          <button class="btn" type="button" data-add="song">＋ 曲</button>
+          <button class="btn" type="button" data-add="mc">＋ MC</button>
+          <button class="btn" type="button" data-add="se">＋ SE</button>
+          <button class="btn" type="button" data-add="other">＋ 転換・他</button>
+          <span class="sep" aria-hidden="true"></span>
+          <label for="bulkN" style="font-size:13px;color:var(--muted)">曲を</label>
+          <input class="in n" type="number" id="bulkN" min="1" max="50" value="${state.bulkN}" aria-label="まとめて追加する曲数">
+          <button class="btn" type="button" data-act="addN">行まとめて追加</button>
+        </div>
+        <details class="bulk" id="bulkBox">
+          <summary>曲名をまとめて入力する</summary>
+          <p>1行に1曲ずつ書いてください。「MC: 告知」「SE: 登場」と書くとMC・SEの行になります。「曲名 / 原曲アーティスト」と書くとカバー曲になります。</p>
+          <textarea class="in" id="bulkText" rows="6" placeholder="登場SE は「SE: 登場」&#10;オリジナル曲A&#10;オリジナル曲B&#10;MC: 自己紹介&#10;カバー曲 / 原曲アーティスト"></textarea>
+          <div class="add-bar">
+            <button class="btn primary" type="button" data-act="addText">末尾に追加</button>
+            <button class="btn" type="button" data-act="replaceText">今の行と入れ替える</button>
+          </div>
+        </details>`}
+        <label class="f notes"><span>連絡事項（集合時間・持ち物など）</span>
+          <textarea class="in" id="f-notes" data-m="notes" rows="3" placeholder="例：15:00 入り、リハは2曲目と5曲目" ${ro}>${esc(sl.notes)}</textarea></label>
+      </section>
+
+      <section class="out" aria-label="コピー用テキスト">
+        <div class="out-head"><h2>メンバーに送る文面</h2>
+          <div class="actions"><span class="toast" id="copied" aria-live="polite"></span>
+            <button class="btn" type="button" id="shareBtn">LINEなどで送る</button>
+            <button class="btn tape" type="button" id="copyBtn">コピー</button></div></div>
+        <div class="opts">
+          <label><input type="checkbox" id="o-artist" data-o="artist" ${state.out.artist?"checked":""}>原曲アーティスト</label>
+          <label><input type="checkbox" id="o-memo" data-o="memo" ${state.out.memo?"checked":""}>メモ</label>
+          <label><input type="checkbox" id="o-time" data-o="time" ${state.out.time?"checked":""}>尺・合計時間</label>
+        </div>
+        <pre class="preview" id="preview">${esc(buildText(sl))}</pre>
+        <div id="fallback"></div>
+      </section>
+
+      <div class="actions">
+        ${state.readOnly?"":`<button class="btn" type="button" data-act="dup">このセトリをコピーして新規作成</button>`}
+        <span class="sp"></span>
+        ${state.readOnly?"":(state.confirmDelete
+          ? `<span style="font-size:13px">このセトリを削除しますか？</span><button class="btn danger" type="button" data-act="delYes">削除する</button><button class="btn ghost" type="button" data-act="delNo">やめる</button>`
+          : `<button class="btn ghost" type="button" data-act="del" style="color:var(--danger)">削除</button>`)}
+      </div>`;
+  }
+
+  function refreshLight(){ // 入力中のフォーカスを崩さない更新
+    const sl=state.draft; if(!sl) return;
+    let n=0;
+    document.querySelectorAll("#rows .row").forEach((li,i)=>{ const r=sl.rows[i]; if(r&&r.kind==="song") li.querySelector(".nv").textContent=++n; });
+    const songs=sl.rows.filter(r=>r.kind==="song"), covers=songs.filter(r=>r.type==="cover").length, total=sl.rows.reduce((a,r)=>a+parseTime(r.time),0);
+    const t=$(".tally"); if(t) t.innerHTML=`<span>曲 <b>${songs.length}</b></span><span>カバー <b>${covers}</b></span><span>合計 <b>${total?fmtTime(total):"—"}</b></span>`;
+    const p=$("#preview"); if(p) p.textContent=buildText(sl);
+  }
+
+  /* ---------- イベント ---------- */
+  document.addEventListener("click",e=>{
+    const b=e.target.closest("button"); if(!b||b.disabled) return;
+    if(b.id==="newBlank"||b.dataset.act==="new") return createBlank();
+    if(b.dataset.open) return open(b.dataset.open);
+    const sl=state.draft; if(!sl) return;
+    if(b.id==="copyBtn") return copyText(buildText(sl));
+    const act=b.dataset.act;
+    if(act==="dup") return duplicate();
+    if(act==="del"){ state.confirmDelete=true; return render(); }
+    if(act==="delNo"){ state.confirmDelete=false; return render(); }
+    if(act==="delYes"){ clearTimeout(saveTimer); state.dirty=false; removeList(sl.id); state.currentId=null; state.draft=null; state.confirmDelete=false; setStatus("削除しました"); return render(); }
+    if(act==="undo" && state.undo){ sl.rows=state.undo.rows; state.undo=null; state.sel.clear(); scheduleSave(); return render(); }
+    if(act==="undoClose"){ state.undo=null; return render(); }
+    if(act==="selNone"){ state.sel.clear(); return render(); }
+    if(act==="delSel"){ const s=new Set(state.sel); return removeRows(r=>s.has(r.id),"{n}行を削除しました"); }
+    if(act==="dupSel"){
+      const out=[]; let last=null;
+      sl.rows.forEach(r=>{ out.push(r); if(state.sel.has(r.id)){ const c={...clone(r),id:uid()}; out.push(c); last=c; } });
+      sl.rows=out; state.sel.clear(); scheduleSave(); render(); return;
+    }
+    if(act==="delEmpty") return removeRows(isEmptySong,"空の曲行を{n}行削除しました");
+    if(act==="clear"){ state.confirmClear=true; return render(); }
+    if(act==="clearNo"){ state.confirmClear=false; return render(); }
+    if(act==="clearYes") return removeRows(()=>true,"すべての行（{n}行）を消しました");
+    if(act==="addN"){
+      const k=Math.max(1,Math.min(50,parseInt($("#bulkN").value,10)||1)); state.bulkN=k;
+      const added=Array.from({length:k},()=>newRow("song")); sl.rows.push(...added);
+      scheduleSave(); render(); focusRow(added[0].id); return;
+    }
+    if(act==="addText"||act==="replaceText"){
+      const ta=$("#bulkText"), rows=parseBulk(ta.value);
+      if(!rows.length){ ta.focus(); return; }
+      if(act==="replaceText" || isBlankSheet(sl)){
+        if(!isBlankSheet(sl)) state.undo={rows:clone(sl.rows), msg:"一括入力で行を入れ替えました"};
+        sl.rows=rows;
+      } else sl.rows.push(...rows);
+      state.sel.clear(); scheduleSave(); render();
+      state.toast=""; const box=$("#bulkBox"); if(box) box.open=false;
+      return;
+    }
+    if(b.dataset.add){ sl.rows.push(newRow(b.dataset.add)); scheduleSave(); render(); const rows=document.querySelectorAll("#rows .title"); rows[rows.length-1]?.focus(); return; }
+    const li=b.closest("[data-row]"); if(!li) return;
+    const i=sl.rows.findIndex(r=>r.id===li.dataset.row); if(i<0) return;
+    if(b.dataset.type){ sl.rows[i].type=b.dataset.type; scheduleSave(); render(); if(b.dataset.type==="cover") $(`[data-row="${sl.rows[i].id}"] [data-f="artist"]`)?.focus(); return; }
+    if(b.dataset.mv){ const j=i+(+b.dataset.mv); if(j<0||j>=sl.rows.length) return; [sl.rows[i],sl.rows[j]]=[sl.rows[j],sl.rows[i]]; scheduleSave(); render(); $(`[data-row="${sl.rows[j].id}"] [data-mv="${b.dataset.mv}"]`)?.focus(); return; }
+    if(b.hasAttribute("data-ins")){ const r=newRow("song"); sl.rows.splice(i+1,0,r); scheduleSave(); render(); focusRow(r.id); return; }
+    if(b.hasAttribute("data-dup")){ const r={...clone(sl.rows[i]),id:uid()}; sl.rows.splice(i+1,0,r); scheduleSave(); render(); focusRow(r.id); return; }
+    if(b.hasAttribute("data-del")){
+      const r=sl.rows[i], label=r.kind==="song"?(r.title||"曲名未定の行"):KINDS[r.kind]+"の行";
+      removeRows(x=>x.id===r.id,`「${label}」を削除しました`); return;
+    }
+  });
+  document.addEventListener("input",e=>{
+    const el=e.target, sl=state.draft;
+    if(el.dataset.o){ state.out[el.dataset.o]=el.checked; refreshLight(); return; }
+    if(!sl||state.readOnly) return;
+    if(el.dataset.m){ sl[el.dataset.m]=el.value; scheduleSave(); refreshLight(); return; }
+    const li=el.closest("[data-row]"); if(!li||!el.dataset.f) return;
+    const r=sl.rows.find(x=>x.id===li.dataset.row); if(!r) return;
+    r[el.dataset.f]=el.value;
+    scheduleSave();
+    if(el.dataset.f==="kind"){ if(el.value!=="song"){ r.type="original"; } render(); return; }
+    refreshLight();
+  });
+  document.addEventListener("change",e=>{
+    const el=e.target, sl=state.draft;
+    if(el.dataset.m==="date"){ renderShelf(); return; }
+    if(!sl) return;
+    if(el.id==="bulkN"){ state.bulkN=Math.max(1,Math.min(50,parseInt(el.value,10)||1)); return; }
+    if(el.id==="selAll"){ state.sel = el.checked ? new Set(sl.rows.map(r=>r.id)) : new Set(); render(); return; }
+    if(el.hasAttribute("data-sel")){
+      const id=el.closest("[data-row]").dataset.row;
+      el.checked ? state.sel.add(id) : state.sel.delete(id); render();
+      document.querySelector(`[data-row="${id}"] [data-sel]`)?.focus(); return;
+    }
+  });
+
+  /* ドラッグで並べ替え（番号の部分をつかむ） */
+  let dragId=null;
+  const clearDropMarks=()=>document.querySelectorAll(".drop-before,.dragging").forEach(x=>x.classList.remove("drop-before","dragging"));
+  document.addEventListener("pointerdown",e=>{ const g=e.target.closest("[data-grip]"); if(g) g.closest(".row").draggable=true; });
+  document.addEventListener("dragstart",e=>{
+    const li=e.target.closest && e.target.closest(".row"); if(!li||!li.draggable) return;
+    dragId=li.dataset.row; li.classList.add("dragging");
+    try{ e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain",dragId); }catch(_){}
+  });
+  function dropTarget(e){
+    const list=$("#rows"); if(!list||!dragId) return null;
+    const rows=[...list.querySelectorAll(".row")];
+    for(const li of rows){ const b=li.getBoundingClientRect(); if(e.clientY < b.top+b.height/2) return li; }
+    return "end";
+  }
+  document.addEventListener("dragover",e=>{
+    if(!dragId || !e.target.closest || !e.target.closest("#rows, .add-bar")) return;
+    e.preventDefault(); const t=dropTarget(e);
+    document.querySelectorAll(".drop-before").forEach(x=>x.classList.remove("drop-before"));
+    if(t && t!=="end") t.classList.add("drop-before");
+  });
+  document.addEventListener("drop",e=>{
+    if(!dragId) return; e.preventDefault();
+    const sl=state.draft, t=dropTarget(e), from=sl.rows.findIndex(r=>r.id===dragId);
+    if(from>=0 && t && !(t!=="end" && t.dataset.row===dragId)){
+      const [moved]=sl.rows.splice(from,1);
+      const to = t==="end" ? sl.rows.length : sl.rows.findIndex(r=>r.id===t.dataset.row);
+      sl.rows.splice(to<0?sl.rows.length:to,0,moved);
+      scheduleSave();
+    }
+    dragId=null; render();
+  });
+  document.addEventListener("dragend",()=>{ dragId=null; clearDropMarks(); document.querySelectorAll(".row[draggable=true]").forEach(x=>x.draggable=false); });
+  document.addEventListener("pointerup",()=>{ if(!dragId) document.querySelectorAll(".row[draggable=true]").forEach(x=>x.draggable=false); });
+  window.addEventListener("pagehide",flushSave);
+
+  function copyText(text){
+    const done=()=>{ const c=$("#copied"); if(c){ c.textContent="コピーしました"; setTimeout(()=>{ if(c) c.textContent=""; },2200);} };
+    const fallback=()=>{ const f=$("#fallback"); f.innerHTML=`<textarea class="in fallback" id="fallbackText" readonly aria-label="コピー用テキスト"></textarea><p style="margin:4px 0 0;font-size:12px;color:var(--muted)">自動コピーできませんでした。上の文字が選択されているので、そのままコピーしてください。</p>`; const t=$("#fallbackText"); t.value=text; t.focus(); t.select(); };
+    try{ navigator.clipboard.writeText(text).then(done,fallback); }catch(e){ fallback(); }
+  }
+
+  /* ---------- 共有（スマホの共有シート） ---------- */
+  function shareText(text, title){
+    if(navigator.share){
+      navigator.share({title:title||"セトリ", text}).catch(err=>{ if(err && err.name!=="AbortError") copyText(text); });
+    } else copyText(text);
+  }
+
+  /* ---------- バックアップ ---------- */
+  function exportBackup(){
+    flushSave();
+    const data={app:"setlist-book", version:1, exportedAt:new Date().toISOString(), setlists:sorted()};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+    const d=new Date(), stamp=d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0");
+    const name=`setlist-backup-${stamp}.json`;
+    const file = (typeof File==="function") ? new File([blob],name,{type:"application/json"}) : null;
+    if(file && navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file], title:"セトリ帳バックアップ"}).then(()=>setStatus("バックアップを書き出しました")).catch(()=>{});
+      return;
+    }
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name;
+    document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1000);
+    setStatus("バックアップを書き出しました");
+  }
+  function importBackup(file){
+    const fr=new FileReader();
+    fr.onload=()=>{
+      try{
+        const data=JSON.parse(fr.result);
+        const arr=Array.isArray(data)?data:(data.setlists||[]);
+        let added=0, updated=0;
+        arr.forEach(sl=>{
+          if(!sl || !sl.id || !Array.isArray(sl.rows)) return;
+          const cur=state.lists[sl.id];
+          if(!cur){ state.lists[sl.id]=sl; added++; }
+          else if((sl.updatedAt||0) > (cur.updatedAt||0)){ state.lists[sl.id]=sl; updated++; }
+        });
+        saveLocal();
+        if(state.currentId && state.lists[state.currentId]) state.draft=clone(state.lists[state.currentId]);
+        else { const f=sorted()[0]; state.currentId=f?f.id:null; state.draft=f?clone(f):null; }
+        state.toast = (added||updated) ? `読み込みました（新規 ${added}件・更新 ${updated}件）` : "読み込めるセトリがありませんでした（すでに同じ内容があります）";
+        render();
+      }catch(e){ state.toast="ファイルを読み込めませんでした。セトリ帳のバックアップ（.json）を選んでください"; render(); }
+    };
+    fr.readAsText(file);
+  }
+  document.addEventListener("click",e=>{
+    const b=e.target.closest("button"); if(!b) return;
+    if(b.id==="shareBtn" && state.draft) shareText(buildText(state.draft), state.draft.title);
+    if(b.id==="exportBtn") exportBackup();
+    if(b.id==="importBtn") $("#importFile").click();
+  });
+  document.addEventListener("change",e=>{ if(e.target.id==="importFile" && e.target.files[0]){ importBackup(e.target.files[0]); e.target.value=""; } });
+  document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden") flushSave(); });
+
+  /* ---------- 起動 ---------- */
+  state.mode="local"; state.lists=loadLocal();
+  const first=sorted()[0]; if(first){ state.currentId=first.id; state.draft=clone(first); }
+  setStatus("この端末に保存"); render();
+  try{ navigator.storage && navigator.storage.persist && navigator.storage.persist(); }catch(e){}
+  if("serviceWorker" in navigator && location.protocol!=="file:"){
+    window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+  }
+})();
+</script>
+</body>
+</html>
